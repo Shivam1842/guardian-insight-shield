@@ -1,6 +1,8 @@
 import { Card } from "@/components/ui/card";
 import { AlertTriangle, CheckCircle, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useEffect, useState } from "react";
+import { getJson } from "@/lib/api";
 
 interface ThreatLogEntry {
   id: string;
@@ -9,34 +11,26 @@ interface ThreatLogEntry {
   time: string;
 }
 
-const mockLogs: ThreatLogEntry[] = [
-  {
-    id: "1",
-    type: "safe",
-    message: "System scan completed - No threats found",
-    time: "2 minutes ago",
-  },
-  {
-    id: "2",
-    type: "info",
-    message: "Virus definitions updated successfully",
-    time: "1 hour ago",
-  },
-  {
-    id: "3",
-    type: "safe",
-    message: "Real-time protection is active",
-    time: "3 hours ago",
-  },
-  {
-    id: "4",
-    type: "info",
-    message: "Quick scan scheduled for tonight",
-    time: "5 hours ago",
-  },
-];
-
 export const ThreatLog = () => {
+  const [logs, setLogs] = useState<ThreatLogEntry[]>([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchLogs = async () => {
+      try {
+        const data: ThreatLogEntry[] = await getJson("/api/logs");
+        if (isMounted) setLogs(data);
+      } catch (_e) {
+        // ignore transient errors
+      }
+    };
+    fetchLogs();
+    const interval = setInterval(fetchLogs, 5000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
   const getIcon = (type: string) => {
     switch (type) {
       case "safe":
@@ -53,7 +47,7 @@ export const ThreatLog = () => {
       <h3 className="text-lg font-semibold text-foreground mb-4">Recent Activity</h3>
       
       <div className="space-y-3">
-        {mockLogs.map((log) => (
+        {logs.map((log) => (
           <div
             key={log.id}
             className="flex items-start gap-3 p-3 rounded-lg bg-secondary/50 hover:bg-secondary/70 transition-colors"

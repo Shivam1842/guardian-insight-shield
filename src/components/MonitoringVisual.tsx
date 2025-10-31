@@ -1,21 +1,32 @@
 import { Card } from "@/components/ui/card";
 import { Activity } from "lucide-react";
 import { useEffect, useState } from "react";
+import { getJson } from "@/lib/api";
 
 export const MonitoringVisual = () => {
   const [isMonitoring, setIsMonitoring] = useState(true);
   const [dataPoints, setDataPoints] = useState<number[]>([]);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setDataPoints((prev) => {
-        const newPoint = Math.random() * 100;
-        const updated = [...prev, newPoint];
-        return updated.slice(-20);
-      });
+    let isMounted = true;
+    const interval = setInterval(async () => {
+      try {
+        const data = await getJson("/api/activity");
+        if (!isMounted) return;
+        setDataPoints((prev) => {
+          const normalized = Math.max(0, Math.min(100, Number(data.cpuLoad) || 0));
+          const updated = [...prev, normalized];
+          return updated.slice(-20);
+        });
+      } catch (_e) {
+        // keep last values on error
+      }
     }, 1000);
 
-    return () => clearInterval(interval);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, []);
 
   return (

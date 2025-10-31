@@ -4,14 +4,16 @@ import { Shield, Search, Settings } from "lucide-react";
 import { useState } from "react";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "@/hooks/use-toast";
+import { postJson } from "@/lib/api";
 
 export const ScanControls = () => {
   const [isScanning, setIsScanning] = useState(false);
   const [progress, setProgress] = useState(0);
 
-  const startScan = (type: string) => {
+  const startScan = async (type: string) => {
     setIsScanning(true);
     setProgress(0);
+    try { await postJson("/api/scan/start", { type }); } catch {}
     
     toast({
       title: `${type} Started`,

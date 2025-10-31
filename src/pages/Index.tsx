@@ -3,8 +3,23 @@ import { StatusCard } from "@/components/StatusCard";
 import { MonitoringVisual } from "@/components/MonitoringVisual";
 import { ScanControls } from "@/components/ScanControls";
 import { ThreatLog } from "@/components/ThreatLog";
+import { useQuery } from "@tanstack/react-query";
+import { getJson } from "@/lib/api";
 
 const Index = () => {
+  const { data: status } = useQuery({
+    queryKey: ["status"],
+    queryFn: () => getJson("/api/status"),
+    refetchInterval: 5000,
+  });
+
+  const lastScanText = status?.lastScanAt
+    ? new Date(status.lastScanAt).toLocaleTimeString()
+    : "No scans yet";
+
+  const threatsValue = 0; // no backend threats count yet
+  const healthLabel = status?.health || "Unknown";
+
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -23,31 +38,31 @@ const Index = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatusCard
             title="Protection Status"
-            value="Protected"
+            value={status ? "Protected" : "Initializing"}
             icon={ShieldCheck}
-            status="safe"
-            description="All shields active"
+            status={status ? "safe" : "warning"}
+            description={status ? `OS: ${status.os}` : "Fetching system info"}
           />
           <StatusCard
             title="Last Scan"
-            value="2 mins ago"
+            value={lastScanText}
             icon={Clock}
-            status="safe"
-            description="Quick scan completed"
+            status={status?.lastScanAt ? "safe" : "warning"}
+            description={status?.lastScanType ? `${status.lastScanType} completed` : "Run your first scan"}
           />
           <StatusCard
             title="Threats Found"
-            value="0"
+            value={`${threatsValue}`}
             icon={Shield}
-            status="safe"
-            description="No action needed"
+            status={threatsValue === 0 ? "safe" : "danger"}
+            description={threatsValue === 0 ? "No action needed" : "Review required"}
           />
           <StatusCard
             title="System Health"
-            value="Excellent"
+            value={healthLabel}
             icon={HardDrive}
-            status="safe"
-            description="All systems optimal"
+            status={healthLabel === "Excellent" ? "safe" : "warning"}
+            description={status ? `CPU ${status.cpuLoad.toFixed(0)}% • MEM ${status.memory.memUsagePct.toFixed(0)}%` : "Loading"}
           />
         </div>
 
