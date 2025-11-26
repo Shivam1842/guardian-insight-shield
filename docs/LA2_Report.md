@@ -37,37 +37,286 @@ This project implements a Windows-focused antivirus-style system monitoring dash
 
 #### 3.3 Architecture of the Program
 
-- **Frontend (React + Vite + TS)**
-  - `src/pages/Index.tsx`: orchestrates dashboard and queries live status
-  - `src/components/MonitoringVisual.tsx`: real-time CPU activity graph (polls backend)
-  - `src/components/ThreatLog.tsx`: shows recent process-based events
-  - `src/components/ScanControls.tsx`: triggers scans; updates last scan time
-  - `@tanstack/react-query`: polling, caching, and request lifecycle
+##### 3.3.1 Three-Tier Architecture Overview
 
-- **Backend (Node.js + Express)**
-  - `server/index.js`
-    - `GET /api/status`: OS, CPU, memory, disk, last-scan, health
-    - `GET /api/activity`: CPU load + network I/O snapshot
-    - `GET /api/logs`: synthesized events from top CPU processes
-    - `POST /api/scan/start`: records last scan metadata
-  - `systeminformation`: cross-platform system metrics (Windows supported)
-  - `cors`: enable local dev from Vite client
+The system follows a classic three-tier architecture pattern optimized for real-time system monitoring:
 
-- **Data Flow**
-  - Frontend polls backend every 1–5s depending on view
-  - Backend queries OS metrics and returns normalized JSON
-  - UI renders live health, activity bars, and event feed
-
-- **Extensibility**
-  - Replace synthesized events with Defender API events or signature engine
-  - Add file system watchers and quarantine workflows
-  - Persist logs to a database for historical reporting
-
-High-level Diagram:
-
+```mermaid
+graph TB
+    subgraph "Presentation Layer (React + Vite + TypeScript)"
+        UI[Dashboard UI<br/>Index.tsx]
+        SC[Scan Controls<br/>Component]
+        MV[Monitoring Visual<br/>Component]
+        TL[Threat Log<br/>Component]
+        SK[Status Cards<br/>Component]
+        
+        UI --> SC
+        UI --> MV
+        UI --> TL
+        UI --> SK
+    end
+    
+    subgraph "State Management"
+        RQ[React Query<br/>Polling & Caching]
+        LS[Local State<br/>useState/useEffect]
+    end
+    
+    subgraph "API Layer"
+        API[API Client<br/>src/lib/api.ts]
+    end
+    
+    subgraph "Backend Layer (Node.js + Express)"
+        EP1[GET /api/status<br/>System Health]
+        EP2[GET /api/activity<br/>Real-time Data]
+        EP3[GET /api/logs<br/>Process Events]
+        EP4[POST /api/scan/start<br/>Scan Trigger]
+    end
+    
+    subgraph "System Integration"
+        SI[systeminformation<br/>Library]
+        OS[Windows OS<br/>Telemetry APIs]
+    end
+    
+    UI --> RQ
+    SC --> LS
+    MV --> LS
+    TL --> LS
+    
+    RQ --> API
+    LS --> API
+    
+    API -->|HTTP JSON| EP1
+    API -->|HTTP JSON| EP2
+    API -->|HTTP JSON| EP3
+    API -->|HTTP JSON| EP4
+    
+    EP1 --> SI
+    EP2 --> SI
+    EP3 --> SI
+    
+    SI --> OS
 ```
-React UI (Vite, TS, Query)  <—— HTTP JSON ——>  Express API (Node)  —— OS Metrics (systeminformation)
+
+##### 3.3.2 Component Descriptions
+
+**Frontend Components:**
+
+- **`src/pages/Index.tsx`**: Main dashboard orchestrator
+  - Coordinates all child components
+  - Manages layout and responsive grid
+  - Implements polling intervals for real-time updates
+  
+- **`src/components/StatusCard.tsx`**: Status indicator component
+  - Displays protection status (Protected/At Risk)
+  - Shows system health (Excellent/Degraded)
+  - Uses color-coded visual feedback (green/orange/red)
+  - Animated pulse effects for active monitoring
+  
+- **`src/components/MonitoringVisual.tsx`**: Real-time activity monitor
+  - Polls `/api/activity` every 1 second
+  - Renders CPU load as animated vertical bars
+  - Maintains sliding window of last 20 data points
+  - Implements scan-line animation effect
+  
+- **`src/components/ScanControls.tsx`**: Scan management interface
+  - Provides Quick Scan and Full Scan buttons
+  - Displays last scan timestamp and type
+  - Shows progress indicators during scanning
+  - Updates scan metadata via POST requests
+  
+- **`src/components/ThreatLog.tsx`**: Recent activity feed
+  - Polls `/api/logs` every 5 seconds
+  - Classifies events by threat level (safe/info/threat)
+  - Color-coded icons for quick visual assessment
+  - Scrollable list of recent process activities
+
+**State Management:**
+
+- **React Query**: 
+  - Handles all server state with automatic polling
+  - Provides caching and background refetch
+  - Manages loading and error states
+  
+- **Local State**:
+  - Component-level state for UI interactions
+  - Scan progress tracking
+  - Animation frame management
+
+**Backend API (Node.js + Express):**
+
+- **`server/index.js`**: Express application with four endpoints
+  
+  - `GET /api/status`: System overview endpoint
+    - Returns OS version, CPU load, memory stats, disk usage
+    - Calculates health status based on thresholds
+    - Includes last scan metadata
+    
+  - `GET /api/activity`: Real-time metrics endpoint
+    - Provides current CPU load percentage
+    - Returns network I/O statistics (RX/TX per second)
+    - Optimized for frequent polling (1s interval)
+    
+  - `GET /api/logs`: Process activity endpoint
+    - Queries top 6 CPU-consuming processes
+    - Classifies threats based on resource usage
+    - Synthesizes event entries with timestamps
+    
+  - `POST /api/scan/start`: Scan initiation endpoint
+    - Accepts scan type (Quick/Full)
+    - Records scan start timestamp
+    - Returns confirmation with metadata
+
+**System Integration Layer:**
+
+- **`systeminformation` library**:
+  - Cross-platform OS metrics collection
+  - Direct Windows API integration
+  - Provides normalized data across platforms
+  - No elevated permissions required
+
+##### 3.3.3 Data Flow Sequence
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Dashboard
+    participant ReactQuery
+    participant API
+    participant Backend
+    participant OS
+    
+    User->>Dashboard: Opens Application
+    Dashboard->>ReactQuery: Initialize Polling
+    
+    loop Every 2-5 seconds
+        ReactQuery->>API: GET /api/status
+        API->>Backend: HTTP Request
+        Backend->>OS: Query systeminformation
+        OS-->>Backend: Raw Metrics
+        Backend->>Backend: Calculate Health
+        Backend-->>API: JSON Response
+        API-->>ReactQuery: Parsed Data
+        ReactQuery-->>Dashboard: State Update
+        Dashboard-->>User: Visual Refresh
+    end
+    
+    User->>Dashboard: Click "Quick Scan"
+    Dashboard->>API: POST /api/scan/start
+    API->>Backend: Initiate Scan
+    Backend->>Backend: Record Metadata
+    Backend-->>API: Confirmation
+    API-->>Dashboard: Update State
+    Dashboard-->>User: Show Progress
 ```
+
+##### 3.3.4 Component Architecture
+
+```mermaid
+graph LR
+    subgraph "Core UI Components"
+        A[StatusCard] --> A1[Protection Status]
+        A --> A2[System Health]
+        A --> A3[Color Indicators]
+        
+        B[MonitoringVisual] --> B1[CPU Graph]
+        B --> B2[Network Stats]
+        B --> B3[Animations]
+        
+        C[ScanControls] --> C1[Quick Scan]
+        C --> C2[Full Scan]
+        C --> C3[Last Scan Info]
+        C --> C4[Progress Bar]
+        
+        D[ThreatLog] --> D1[Event List]
+        D --> D2[Threat Classification]
+        D --> D3[Process Details]
+    end
+```
+
+##### 3.3.5 Monitoring Algorithm Flow
+
+```mermaid
+flowchart TD
+    Start[Monitor Initialized] --> Poll[Poll OS Metrics]
+    Poll --> Collect[Collect Data]
+    
+    Collect --> CPU[CPU Load %]
+    Collect --> MEM[Memory Usage %]
+    Collect --> DISK[Disk Usage %]
+    Collect --> PROC[Process List]
+    
+    CPU --> Evaluate{Health Check}
+    MEM --> Evaluate
+    DISK --> Evaluate
+    
+    Evaluate -->|All Thresholds OK| Good[Status: Excellent]
+    Evaluate -->|Any Threshold Exceeded| Warn[Status: Degraded]
+    
+    PROC --> Sort[Sort by CPU Usage]
+    Sort --> Top[Top 6 Processes]
+    Top --> Classify{Classify Threat}
+    
+    Classify -->|CPU > 50%| High[Threat Level]
+    Classify -->|CPU 5-50%| Med[Info Level]
+    Classify -->|CPU < 5%| Low[Safe Level]
+    
+    Good --> Update[Update Dashboard]
+    Warn --> Update
+    High --> Update
+    Med --> Update
+    Low --> Update
+    
+    Update --> Wait[Wait Interval]
+    Wait --> Poll
+```
+
+##### 3.3.6 Technology Stack
+
+**Frontend:**
+- React 18.3.1 with TypeScript
+- Vite (build tool and dev server)
+- Tailwind CSS for styling
+- shadcn/ui component library
+- @tanstack/react-query for server state
+- lucide-react for icons
+
+**Backend:**
+- Node.js runtime
+- Express 4.21.1 (web framework)
+- systeminformation 5.23.5 (OS metrics)
+- cors (cross-origin support)
+
+**Development:**
+- ESLint for code quality
+- TypeScript for type safety
+- Hot Module Replacement (HMR) for fast development
+
+##### 3.3.7 Data Flow Patterns
+
+**Polling Strategy:**
+- Status updates: Every 2 seconds
+- Activity monitoring: Every 1 second
+- Threat logs: Every 5 seconds
+- Network optimization: Concurrent requests allowed
+
+**State Synchronization:**
+- React Query cache invalidation on scan
+- Optimistic UI updates for scan triggers
+- Automatic retry on network failure
+- Stale-while-revalidate pattern
+
+##### 3.3.8 Extensibility Architecture
+
+The modular design enables future enhancements:
+
+1. **Signature-Based Scanning**: Replace heuristic classification with YARA rules or virus definition databases
+2. **Windows Defender Integration**: Connect to native Windows Security APIs for verified threat detection
+3. **Database Persistence**: Add SQLite or PostgreSQL for historical scan logs and threat archives
+4. **File System Monitoring**: Implement real-time file watchers for on-access scanning
+5. **Quarantine Management**: Add isolated storage for suspicious files with restore capability
+6. **Scheduled Scans**: Implement cron-based background scanning with configurable intervals
+7. **Email Notifications**: Alert users of critical threats via SMTP integration
+8. **Multi-Language Support**: Internationalization (i18n) for global accessibility
 
 #### 3.4 Designs (Screenshots)
 
